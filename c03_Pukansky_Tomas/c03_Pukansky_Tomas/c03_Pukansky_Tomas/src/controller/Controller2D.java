@@ -352,8 +352,8 @@ public class Controller2D {
                             }
 
                             List<Point> clipped = clipper.clip(
-                                    clipperPolygon.getPoints(),
-                                    poly.getPoints()
+                                    poly.getPoints(),           // 1. parameter: čo chceme ponechať (VONKU)
+                                    clipperPolygon.getPoints()  // 2. parameter: čo chceme odrezať (VNÚTRO)
                             );
 
                             if (!clipped.isEmpty()) {
@@ -361,12 +361,10 @@ public class Controller2D {
                                 clippedPoly.setRasterizer(lineRasterizer);
                                 clippedPoly.close();
                                 clippedPolygons.add(clippedPoly);
-                                System.out.println("Result: " + clipped.size() + " points"); // ← **PRIDANÉ**
-
-                            }else {
-                                System.out.println("Result: polygon completely clipped away"); // ← **PRIDANÉ**
+                                System.out.println("Result: " + clipped.size() + " points");
+                            } else {
+                                System.out.println("Result: polygon completely clipped away");
                             }
-
                         }
 
                         polygons = clippedPolygons;

@@ -179,14 +179,14 @@ public class Clipper {
             Point currentPoint = a.get(i);
             Point nextPoint = a.get((i + 1) % a.size());
 
-            boolean currentInside = isInside(b, currentPoint);
-            boolean nextInside = isInside(b, nextPoint);
+            boolean currentOutside = !isInside(b, currentPoint);
+            boolean nextOutside = !isInside(b, nextPoint);
 
-            if (currentInside) {
+            if (currentOutside) {
                 result.add(currentPoint);
             }
 
-            if (currentInside != nextInside) {
+            if (currentOutside != nextOutside) {
                 Point intersection = calculateIntersection(b, currentPoint, nextPoint);
                 if (intersection != null) {
                     result.add(intersection);
