@@ -1,200 +1,103 @@
 package clip;
 
 import model.Point;
-import model.Polygon;
-
 import java.util.ArrayList;
 import java.util.List;
 
 public class Clipper {
-    private int numberOfIntersections;
-    private List<Point> resultPoints;
 
-    public List<Point> clip(List<Point> clipperPoints, List<Point> pointsToClip) {
-        resultPoints = new ArrayList<>();
-        this.numberOfIntersections = 0;
+    public List<Point> clip(List<Point> subjectPolygon, List<Point> clipperPolygon) {
+        System.out.println("Clipper: Starting with subject=" + subjectPolygon.size() +
+                ", clipper=" + clipperPolygon.size());
 
-        System.out.println("Clipper: Starting Weiler-Atherton with clipper=" + clipperPoints.size() +
-                ", toClip=" + pointsToClip.size());
-
-        List<Point> a = clipOne(pointsToClip, clipperPoints);
-        List<Point> b = clipOne(clipperPoints, pointsToClip);
-
-        System.out.println("After clipOne: a=" + a.size() + ", b=" + b.size());
-
-        int i = 0, j = 0;
-        while(true) {
-            if(i >= a.size()){
-                for (int n = j; n < b.size(); n++){
-                    resultPoints.add(b.get(n));
-                }
-                break;
-            }
-
-            if(j >= b.size()){
-                for (int n = i; n < a.size(); n++){
-                    resultPoints.add(a.get(n));
-                }
-                break;
-            }
-
-            if(a.get(i).getX() == b.get(j).getX() && a.get(i).getY() == b.get(j).getY()){
-                resultPoints.add(a.get(i));
-                i++;
-                j++;
-            }
-            else{
-                List<Point> temp = mergePoints(a, b, i, j);
-                if(temp != null){
-                    for (int n = 1; n < temp.size(); n++){
-                        resultPoints.add(temp.get(n));
-                    }
-                    if(temp.get(0).getX() == 0){
-                        i+= temp.size();
-                        j++;
-                    }
-                    else{
-                        j+= temp.size();
-                        i++;
-                    }
-                }
-            }
-        }
-
-        System.out.println("Clipper: Final result has " + resultPoints.size() + " points");
-        return resultPoints;
-    }
-
-    private boolean isInside(List<Point> clipperPoints, Point p) {
-        int windingNumber = 0;
-
-        for (int i = 0; i < clipperPoints.size(); i++) {
-            Point start = clipperPoints.get(i);
-            Point end = clipperPoints.get((i + 1) % clipperPoints.size());
-
-            if (start.getY() <= p.getY()) {
-                if (end.getY() > p.getY()) {
-                    if (isLeftOfEdge(start, end, p) > 0) {
-                        windingNumber++;
-                    }
-                }
-            } else {
-                if (end.getY() <= p.getY()) {
-                    if (isLeftOfEdge(start, end, p) < 0) {
-                        windingNumber--;
-                    }
-                }
-            }
-        }
-
-        return windingNumber != 0;
-    }
-
-    private double isLeftOfEdge(Point start, Point end, Point p) {
-        return (end.getX() - start.getX()) * (p.getY() - start.getY()) -
-                (p.getX() - start.getX()) * (end.getY() - start.getY());
-    }
-
-    private Point calculateIntersection(List<Point> clipperPoints, Point p1, Point p2) {
-        for (int i = 0; i < clipperPoints.size(); i++) {
-            Point cP1 = clipperPoints.get(i);
-            Point cP2 = clipperPoints.get((i + 1) % clipperPoints.size());
-
-            double x1 = cP1.getX(), y1 = cP1.getY();
-            double x2 = cP2.getX(), y2 = cP2.getY();
-            double x3 = p1.getX(), y3 = p1.getY();
-            double x4 = p2.getX(), y4 = p2.getY();
-
-            double numeratorX = (x1 * y2 - y1 * x2) * (x3 - x4) - (x3 * y4 - y3 * x4) * (x1 - x2);
-            double numeratorY = (x1 * y2 - y1 * x2) * (y3 - y4) - (x3 * y4 - y3 * x4) * (y1 - y2);
-            double denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-
-            if (Math.abs(denominator) < 1e-10) {
-                continue;
-            }
-
-            double x0 = numeratorX / denominator;
-            double y0 = numeratorY / denominator;
-
-            if (isBetween(x1, x2, x0) && isBetween(y1, y2, y0) &&
-                    isBetween(x3, x4, x0) && isBetween(y3, y4, y0)) {
-                this.numberOfIntersections++;
-                return new Point((int) Math.round(x0), (int) Math.round(y0));
-            }
-        }
-        return null;
-    }
-
-    private boolean isBetween(double a, double b, double c) {
-        return Math.min(a, b) <= c && c <= Math.max(a, b);
-    }
-
-    private List<Point> mergePoints(List<Point> a, List<Point> b, int i, int j) {
-        boolean checkA = false, checkB = false;
-        List<Point> pointsA = new ArrayList<>();
-        pointsA.add(new Point(0, 0));
-
-        List<Point> pointsB = new ArrayList<>();
-        pointsB.add(new Point(1, 0));
-
-        pointsA.add(a.get(i));
-        pointsB.add(b.get(j));
-
-        MAIN: for (int n = i; n < a.size()-1; n++) {
-            for (Point p : b) {
-                if(a.get(n+1).getX() == p.getX() && a.get(n+1).getY() == p.getY()) {
-                    checkA = true;
-                    pointsA.add(new Point(a.get(n+1).getX(), a.get(n+1).getY()));
-                    break MAIN;
-                }
-            }
-            pointsA.add(new Point(a.get(n+1).getX(), a.get(n+1).getY()));
-        }
-
-        MAIN: for (int n = j; n < b.size()-1; n++) {
-            for (Point p : a) {
-                if(b.get(n+1).getX() == p.getX() && b.get(n+1).getY() == p.getY()) {
-                    checkB = true;
-                    pointsB.add(new Point(b.get(n+1).getX(), b.get(n+1).getY()));
-                    break MAIN;
-                }
-            }
-            pointsB.add(new Point(b.get(n+1).getX(), b.get(n+1).getY()));
-        }
-
-        if(pointsA.size() < pointsB.size() && checkA){
-            return pointsA;
-        }
-        else if (checkB){
-            return pointsB;
-        }
-        return null;
-    }
-
-    private List<Point> clipOne(List<Point> a, List<Point> b) {
-        System.out.println("clipOne: processing " + a.size() + " points against " + b.size() + " edges");
         List<Point> result = new ArrayList<>();
 
-        for (int i = 0; i < a.size(); i++) {
-            Point currentPoint = a.get(i);
-            Point nextPoint = a.get((i + 1) % a.size());
+        for (int i = 0; i < subjectPolygon.size(); i++) {
+            Point current = subjectPolygon.get(i);
+            Point next = subjectPolygon.get((i + 1) % subjectPolygon.size());
 
-            boolean currentOutside = !isInside(b, currentPoint);
-            boolean nextOutside = !isInside(b, nextPoint);
+            boolean currentOutside = !isInside(clipperPolygon, current);
+            boolean nextOutside = !isInside(clipperPolygon, next);
 
-            if (currentOutside) {
-                result.add(currentPoint);
-            }
-
-            if (currentOutside != nextOutside) {
-                Point intersection = calculateIntersection(b, currentPoint, nextPoint);
+            if (currentOutside && nextOutside) {
+                // Oba body mimo → pridaj ďalší bod
+                result.add(next);
+            } else if (currentOutside && !nextOutside) {
+                // Vstup do clippera → pridaj priesečník
+                Point intersection = findIntersection(clipperPolygon, current, next);
                 if (intersection != null) {
                     result.add(intersection);
                 }
+            } else if (!currentOutside && nextOutside) {
+                // Výstup z clippera → pridaj priesečník a ďalší bod
+                Point intersection = findIntersection(clipperPolygon, current, next);
+                if (intersection != null) {
+                    result.add(intersection);
+                }
+                result.add(next);
+            }
+            // else: oba vnútri → nepridávaj nič
+        }
+
+        System.out.println("Clipper: Result has " + result.size() + " points");
+        return result;
+    }
+
+    private boolean isInside(List<Point> polygon, Point p) {
+        int winding = 0;
+
+        for (int i = 0; i < polygon.size(); i++) {
+            Point p1 = polygon.get(i);
+            Point p2 = polygon.get((i + 1) % polygon.size());
+
+            if (p1.getY() <= p.getY()) {
+                if (p2.getY() > p.getY()) {
+                    if (isLeft(p1, p2, p) > 0) {
+                        winding++;
+                    }
+                }
+            } else {
+                if (p2.getY() <= p.getY()) {
+                    if (isLeft(p1, p2, p) < 0) {
+                        winding--;
+                    }
+                }
             }
         }
 
-        System.out.println("clipOne: returning " + result.size() + " points");
-        return result;
+        return winding != 0;
+    }
+
+    private double isLeft(Point p0, Point p1, Point p2) {
+        return (p1.getX() - p0.getX()) * (p2.getY() - p0.getY()) -
+                (p2.getX() - p0.getX()) * (p1.getY() - p0.getY());
+    }
+
+    private Point findIntersection(List<Point> clipper, Point p1, Point p2) {
+        for (int i = 0; i < clipper.size(); i++) {
+            Point c1 = clipper.get(i);
+            Point c2 = clipper.get((i + 1) % clipper.size());
+
+            double x1 = c1.getX(), y1 = c1.getY();
+            double x2 = c2.getX(), y2 = c2.getY();
+            double x3 = p1.getX(), y3 = p1.getY();
+            double x4 = p2.getX(), y4 = p2.getY();
+
+            double denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+
+            if (Math.abs(denom) < 1e-10) {
+                continue;
+            }
+
+            double t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+            double u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                int x = (int) Math.round(x1 + t * (x2 - x1));
+                int y = (int) Math.round(y1 + t * (y2 - y1));
+                return new Point(x, y);
+            }
+        }
+        return null;
     }
 }
