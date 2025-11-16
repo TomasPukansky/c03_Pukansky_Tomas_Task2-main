@@ -106,7 +106,7 @@ public class Controller2D {
 
                         // po vyplnení mód vypnúť
                         fillMode = FillMode.NONE;
-                        drawScene();
+                        panel.repaint();
                         return;
                     }
 
@@ -119,7 +119,7 @@ public class Controller2D {
                         }
 
                         fillMode = FillMode.NONE;
-                        drawScene();
+                        panel.repaint();
                         return;
                     }
 
