@@ -1,6 +1,7 @@
 package controller;
 
 
+import clip.Clipper;
 import fill.*;
 import model.*;
 import rasterize.*;
@@ -30,11 +31,13 @@ public class Controller2D {
     private Polygon polygonClipper;
     private Polygon currentPolygon;
     private PolygonRasterizer polygonRasterizer;
+
     private enum FillMode {
         NONE,
         SEED_FILL,
         SCANLINE_FILL
     }
+
     private FillMode fillMode = FillMode.NONE;
     private int fillColor = 0x00ff00;
     private boolean rectangleMode = false;
@@ -43,6 +46,9 @@ public class Controller2D {
     private Point rectBaseStart;
     private Point rectBaseEnd;
     private boolean useQueueFill = true; // true = Queue, false = Stack
+    private boolean clipperMode = false;
+    private Polygon clipperPolygon;
+    private List<Point> clipperPoints = new ArrayList<>();
 
     public Controller2D(Panel panel) {
         this.panel = panel;
@@ -94,6 +100,13 @@ public class Controller2D {
 
                 int x = Math.max(0, Math.min(e.getX(), panel.getRaster().getWidth() - 1));
                 int y = Math.max(0, Math.min(e.getY(), panel.getRaster().getHeight() - 1));
+
+                if (clipperMode && e.getButton() == MouseEvent.BUTTON1) {
+                    clipperPoints.add(new Point(x, y));
+                    drawScene();
+                    return;
+                }
+
                 // todo: na klik mouse button3 seedfill
                 if (rectangleMode) {
                     if (rectangleClickCount == 0) {
@@ -297,6 +310,71 @@ public class Controller2D {
         panel.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_O) {
+                    clipperMode = !clipperMode;
+
+                    if (clipperMode) {
+                        System.out.println("Clipper mode: SELECT clipper polygon");
+                        clipperPoints.clear();
+                        clipperPolygon = null;
+                        polygonMode = false;
+                        currentPolygonPoints.clear();
+                        currentPolygon = null;
+                        currentPoint = null;
+                    } else {
+                        System.out.println("Clipper mode: OFF");
+                    }
+                    drawScene();
+                }
+
+                // U = provést ořezání
+                if (e.getKeyCode() == KeyEvent.VK_U) {
+                        // ← **PRIDANÉ: kontroly**
+                        if (clipperPolygon == null) {
+                            System.out.println("No clipper polygon defined! Use O->draw->ENTER first.");
+                            return;
+                        }
+
+
+                        if (polygons.isEmpty()) {
+                            System.out.println("No polygons to clip!");
+                            return;
+                        }
+
+                        System.out.println("Starting clipping with clipper: " + clipperPolygon.getSize() + " points"); // ← **PRIDANÉ**
+
+                        Clipper clipper = new Clipper();
+                        List<Polygon> clippedPolygons = new ArrayList<>();
+
+                        for (Polygon poly : polygons) {
+                            if (poly == clipperPolygon) {
+                                continue; // Neořezáváme sám sebe
+                            }
+
+                            List<Point> clipped = clipper.clip(
+                                    clipperPolygon.getPoints(),
+                                    poly.getPoints()
+                            );
+
+                            if (!clipped.isEmpty()) {
+                                Polygon clippedPoly = new Polygon(clipped);
+                                clippedPoly.setRasterizer(lineRasterizer);
+                                clippedPoly.close();
+                                clippedPolygons.add(clippedPoly);
+                                System.out.println("Result: " + clipped.size() + " points"); // ← **PRIDANÉ**
+
+                            }else {
+                                System.out.println("Result: polygon completely clipped away"); // ← **PRIDANÉ**
+                            }
+
+                        }
+
+                        polygons = clippedPolygons;
+                        polygons.add(clipperPolygon); // Přidáme zpět clipper
+                        drawScene();
+                        System.out.println("Clipping done. Total polygons: " + polygons.size()); // ← **PRIDANÉ**
+
+                }
                 // M = prepínanie medzi Queue a Stack
                 if (e.getKeyCode() == KeyEvent.VK_M) {
                     useQueueFill = !useQueueFill;
@@ -358,6 +436,19 @@ public class Controller2D {
                 }
 
                 if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+                    // CLIPPER MODE
+                    if (clipperMode && clipperPoints.size() >= 3) {
+                        clipperPolygon = new Polygon(clipperPoints);
+                        clipperPolygon.setRasterizer(lineRasterizer);
+                        clipperPolygon.close();
+                        polygons.add(clipperPolygon);
+                        clipperMode = false;
+                        clipperPoints.clear();
+                        drawScene();
+                        System.out.println("Clipper polygon created");
+                        return;
+                    }
+                    // POLYGON MODE
                     if (polygonMode && currentPolygonPoints.size() >= 3) {
                         // DEBUG: Print how many points we have
                         System.out.println("Creating polygon with " + currentPolygonPoints.size() + " points");
@@ -373,15 +464,11 @@ public class Controller2D {
 
                         // polygon uzavrieme
                         currentPolygon.close();
-
-                        Polygon polygon = currentPolygon;
+                        polygons.add(currentPolygon);
 
                         // DEBUG: Verify polygon was created
                         System.out.println("Polygon created with " + polygon.getSize() + " points");
                         System.out.println("Polygon has " + polygon.getEdges().size() + " edges");
-
-                        polygons.add(polygon);
-
                         // DEBUG: Check total polygons
                         System.out.println("Total polygons: " + polygons.size());
 
@@ -450,26 +537,35 @@ public class Controller2D {
 
     private void drawScene() {
         panel.getRaster().clear();
-        // Rectangle preview
-        if (rectangleMode && currentRectangle != null) {
-            polygonRasterizer.rasterize(currentRectangle);
-        }
-        // miesto pouzivania rasterizeru prevsetky lines
-        // kazda linka pouziva svoj vlastny rasterizer ktory sa uklada ked sa vytvori
-
-        for (Line line : lines) {
-
-            if (line.getRasterizer() != null) {
-                line.getRasterizer().rasterize(line);
-            } else {
-                // Fallback: ak ziaden rasterizer nebol nastaven, pouzijeme momentalny
-                lineRasterizer.rasterize(line);
+        // Preview clipper polyg
+        if (clipperMode && !clipperPoints.isEmpty()) {
+            for (int i = 0; i < clipperPoints.size() - 1; i++) {
+                Point p1 = clipperPoints.get(i);
+                Point p2 = clipperPoints.get(i + 1);
+                lineRasterizer.rasterize(p1.getX(), p1.getY(), p2.getX(), p2.getY());
             }
         }
 
-        // Draw all completed polygons/debug
-        System.out.println("Drawing " + polygons.size() + " polygons"); // DEBUG
-        for (Polygon polygon : polygons) {
+            // Rectangle preview
+            if (rectangleMode && currentRectangle != null) {
+                polygonRasterizer.rasterize(currentRectangle);
+            }
+            // miesto pouzivania rasterizeru prevsetky lines
+            // kazda linka pouziva svoj vlastny rasterizer ktory sa uklada ked sa vytvori
+
+            for (Line line : lines) {
+
+                if (line.getRasterizer() != null) {
+                    line.getRasterizer().rasterize(line);
+                } else {
+                    // Fallback: ak ziaden rasterizer nebol nastaven, pouzijeme momentalny
+                    lineRasterizer.rasterize(line);
+                }
+            }
+
+            // Draw all completed polygons/debug
+            System.out.println("Drawing " + polygons.size() + " polygons"); // DEBUG
+            for (Polygon polygon : polygons) {
 
 //            List<Line> edges = polygon.getEdges();
 //
@@ -483,52 +579,53 @@ public class Controller2D {
 //                    lineRasterizer.rasterize(edge);
 //                }
 //            }
-            if (polygonRasterizer != null) {
-                polygonRasterizer.rasterize(polygon);
-            }
-        }
-
-        if (polygonMode) {
-            // POLYGON MODE
-            System.out.println("Drawing preview with " + currentPolygonPoints.size() + " points"); // DEBUG
-
-            // linky medzi existujicimi bodmi
-            for (int i = 0; i < currentPolygonPoints.size() - 1; i++) {
-                Point p1 = currentPolygonPoints.get(i);
-                Point p2 = currentPolygonPoints.get(i + 1);
-                lineRasterizer.rasterize(p1.getX(), p1.getY(), p2.getX(), p2.getY());
+                if (polygonRasterizer != null) {
+                    polygonRasterizer.rasterize(polygon);
+                }
             }
 
-            // last point na kurzor
-            if (!currentPolygonPoints.isEmpty() && currentPoint != null) {
-                Point lastPoint = currentPolygonPoints.get(currentPolygonPoints.size() - 1);
-                lineRasterizer.rasterize(
-                        lastPoint.getX(), lastPoint.getY(),
-                        currentPoint.getX(), currentPoint.getY()
-                );
+            if (polygonMode) {
+                // POLYGON MODE
+                System.out.println("Drawing preview with " + currentPolygonPoints.size() + " points"); // DEBUG
 
-                // od kurzoru k prvemu bodu
-                if (currentPolygonPoints.size() >= 2) {
-                    Point firstPolygonPoint = currentPolygonPoints.get(0);
+                // linky medzi existujicimi bodmi
+                for (int i = 0; i < currentPolygonPoints.size() - 1; i++) {
+                    Point p1 = currentPolygonPoints.get(i);
+                    Point p2 = currentPolygonPoints.get(i + 1);
+                    lineRasterizer.rasterize(p1.getX(), p1.getY(), p2.getX(), p2.getY());
+                }
+
+                // last point na kurzor
+                if (!currentPolygonPoints.isEmpty() && currentPoint != null) {
+                    Point lastPoint = currentPolygonPoints.get(currentPolygonPoints.size() - 1);
                     lineRasterizer.rasterize(
-                            currentPoint.getX(), currentPoint.getY(),
-                            firstPolygonPoint.getX(), firstPolygonPoint.getY()
+                            lastPoint.getX(), lastPoint.getY(),
+                            currentPoint.getX(), currentPoint.getY()
+                    );
+
+                    // od kurzoru k prvemu bodu
+                    if (currentPolygonPoints.size() >= 2) {
+                        Point firstPolygonPoint = currentPolygonPoints.get(0);
+                        lineRasterizer.rasterize(
+                                currentPoint.getX(), currentPoint.getY(),
+                                firstPolygonPoint.getX(), firstPolygonPoint.getY()
+                        );
+                    }
+                }
+            } else {
+                // LINE MODE
+                if (firstPoint != null && currentPoint != null) {
+                    lineRasterizer.rasterize(
+                            firstPoint.getX(), firstPoint.getY(),
+                            currentPoint.getX(), currentPoint.getY()
                     );
                 }
             }
-        } else {
-            // LINE MODE
-            if (firstPoint != null && currentPoint != null) {
-                lineRasterizer.rasterize(
-                        firstPoint.getX(), firstPoint.getY(),
-                        currentPoint.getX(), currentPoint.getY()
-                );
-            }
+
+
+            panel.repaint();
         }
 
 
-        panel.repaint();
     }
 
-
-}
