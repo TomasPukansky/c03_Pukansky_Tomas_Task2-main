@@ -1,6 +1,7 @@
 package controller;
 
 
+import fill.*;
 import model.*;
 import rasterize.*;
 import view.Panel;
@@ -12,10 +13,6 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
-
-import fill.SeedFiller;
-import fill.ScanLineFiller;
-import fill.Filler;
 
 //TODO: code-> reformat code
 public class Controller2D {
@@ -45,6 +42,7 @@ public class Controller2D {
     private int rectangleClickCount = 0;
     private Point rectBaseStart;
     private Point rectBaseEnd;
+    private boolean useQueueFill = true; // true = Queue, false = Stack
 
     public Controller2D(Panel panel) {
         this.panel = panel;
@@ -122,6 +120,24 @@ public class Controller2D {
                     }
                     drawScene();
                     return;
+                }
+
+                if (e.getButton() == MouseEvent.BUTTON2) {
+                    if (fillMode == FillMode.SEED_FILL) {
+                        int boundaryColor = color;
+
+                        Filler seedFiller;
+                        if (useQueueFill) {
+                            seedFiller = new SeedFillerQueue(panel.getRaster(), fillColor, x, y, boundaryColor);
+                        } else {
+                            seedFiller = new SeedFillerStack(panel.getRaster(), fillColor, x, y, boundaryColor);
+                        }
+
+                        seedFiller.fill();
+                        fillMode = FillMode.NONE;
+                        panel.repaint();
+                        return;
+                    }
                 }
 
                 if (e.getButton() == MouseEvent.BUTTON2) {
@@ -281,6 +297,12 @@ public class Controller2D {
         panel.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
+                // M = prepínanie medzi Queue a Stack
+                if (e.getKeyCode() == KeyEvent.VK_M) {
+                    useQueueFill = !useQueueFill;
+                    System.out.println("Seed Fill mode: " + (useQueueFill ? "QUEUE" : "STACK"));
+                }
+
                 //shift- snap mod
                 if (e.getKeyCode() == KeyEvent.VK_SHIFT) {
                     shiftPressed = true;
