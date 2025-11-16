@@ -1,11 +1,9 @@
 package controller;
 
 
-import model.Line;
-import model.Polygon;
+import model.*;
 import rasterize.*;
 import view.Panel;
-import model.Point;
 import model.Polygon;
 
 import java.awt.event.KeyAdapter;
@@ -42,6 +40,11 @@ public class Controller2D {
     }
     private FillMode fillMode = FillMode.NONE;
     private int fillColor = 0x00ff00;
+    private boolean rectangleMode = false;
+    private Rectangle currentRectangle;
+    private int rectangleClickCount = 0;
+    private Point rectBaseStart;
+    private Point rectBaseEnd;
 
     public Controller2D(Panel panel) {
         this.panel = panel;
@@ -94,6 +97,33 @@ public class Controller2D {
                 int x = Math.max(0, Math.min(e.getX(), panel.getRaster().getWidth() - 1));
                 int y = Math.max(0, Math.min(e.getY(), panel.getRaster().getHeight() - 1));
                 // todo: na klik mouse button3 seedfill
+                if (rectangleMode) {
+                    if (rectangleClickCount == 0) {
+                        // First click - base start
+                        rectBaseStart = new Point(x, y);
+                        rectangleClickCount = 1;
+                    } else if (rectangleClickCount == 1) {
+                        // Second click - base end, create rectangle preview
+                        rectBaseEnd = new Point(x, y);
+                        currentRectangle = new Rectangle(rectBaseStart, rectBaseEnd);
+                        currentRectangle.setRasterizer(lineRasterizer);
+                        rectangleClickCount = 2;
+                    } else if (rectangleClickCount == 2) {
+                        // Third click - finalize rectangle
+                        currentRectangle.setHeightPoint(new Point(x, y));
+                        currentRectangle.finalizeRectangle();
+                        polygons.add(currentRectangle);
+
+                        // Reset for next rectangle
+                        currentRectangle = null;
+                        rectangleClickCount = 0;
+                        rectBaseStart = null;
+                        rectBaseEnd = null;
+                    }
+                    drawScene();
+                    return;
+                }
+
                 if (e.getButton() == MouseEvent.BUTTON2) {
                     if (fillMode == FillMode.SEED_FILL) {
                         // Seed fill – obmedzenie farbou hranice aj pozadia
@@ -192,6 +222,10 @@ public class Controller2D {
                         }
                         drawScene();
                     }
+                }
+                if (rectangleMode && rectangleClickCount == 2 && currentRectangle != null) {
+                    currentRectangle.setHeightPoint(new Point(e.getX(), e.getY()));
+                    drawScene();
                 }
             }
 
@@ -368,16 +402,36 @@ public class Controller2D {
                     }
                     panel.repaint();
                 }
+                if (e.getKeyCode() == KeyEvent.VK_R) {
+                    rectangleMode = !rectangleMode;
+
+                    // Reset rectangle state
+                    currentRectangle = null;
+                    rectangleClickCount = 0;
+                    rectBaseStart = null;
+                    rectBaseEnd = null;
+
+                    // Exit other modes
+                    polygonMode = false;
+                    firstPoint = null;
+                    currentPoint = null;
+                    currentPolygonPoints.clear();
+                    currentPolygon = null;
+
+                    drawScene();
+                    System.out.println("Mode: " + (rectangleMode ? "RECTANGLE" : "LINE"));
+                }
+
             }
         });
     }
 
     private void drawScene() {
         panel.getRaster().clear();
-        //todo: pouzit seedfill
-
-
-
+        // Rectangle preview
+        if (rectangleMode && currentRectangle != null) {
+            polygonRasterizer.rasterize(currentRectangle);
+        }
         // miesto pouzivania rasterizeru prevsetky lines
         // kazda linka pouziva svoj vlastny rasterizer ktory sa uklada ked sa vytvori
 

@@ -3,11 +3,11 @@ package model;
 
 import rasterize.LineRasterizer;
 
-public class Edge {
-    private final int y1;
-    private final int x1;
-    private final int y2;
-    private final int x2;
+public class    Edge {
+    private int y1;
+    private int x1;
+    private int y2;
+    private int x2;
     private LineRasterizer rasterizer;
 
     public Edge(int y1, int x1, int y2, int x2) {
@@ -32,19 +32,30 @@ public class Edge {
 
     public void orientate() {
         if (y1 > y2) {
-            //todo: dorobit prehodit x a y
-
+            int tmpX = x1;
+            int tmpY = y1;
+            x1 = x2;
+            y1 = y2;
+            x2 = tmpX;
+            y2 = tmpY;
         }
     }
 
     public Boolean isIntersection(int y) {
-        return y1 <= y2 && y2 >= y1;
+        return (y >= y1) && (y < y2);
 
     }
 
     public int getIntersection(int y) {
-        return y1;
         //todo: spocitat priesecnik, pre y najdem x
+        if (y2 == y1) {
+            // horizontálna hrana – normálne by sme ju mali filtrovať už skôr
+            return x1;
+        }
+
+        double t = (double) (y - y1) / (double) (y2 - y1);
+        double x = x1 + t * (x2 - x1);
+        return (int) Math.round(x);
     }
 
 
