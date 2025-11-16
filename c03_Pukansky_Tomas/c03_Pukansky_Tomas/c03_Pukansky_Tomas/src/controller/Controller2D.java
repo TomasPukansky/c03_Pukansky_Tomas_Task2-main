@@ -467,11 +467,9 @@ public class Controller2D {
                         polygons.add(currentPolygon);
 
                         // DEBUG: Verify polygon was created
-                        System.out.println("Polygon created with " + polygon.getSize() + " points");
-                        System.out.println("Polygon has " + polygon.getEdges().size() + " edges");
-                        // DEBUG: Check total polygons
+                        System.out.println("Polygon created with " + currentPolygon.getSize() + " points");
+                        System.out.println("Polygon has " + currentPolygon.getEdges().size() + " edges");
                         System.out.println("Total polygons: " + polygons.size());
-
                         //testing
                         currentPolygonPoints = new ArrayList<>();
                         currentPoint = null;

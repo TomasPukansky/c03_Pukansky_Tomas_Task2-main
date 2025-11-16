@@ -1,123 +1,200 @@
 package clip;
 
-
 import model.Point;
+import model.Polygon;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class Clipper {
+    private int numberOfIntersections;
+    private List<Point> resultPoints;
+
     public List<Point> clip(List<Point> clipperPoints, List<Point> pointsToClip) {
-        if (clipperPoints.size() < 3 || pointsToClip.isEmpty()) {
-            return new ArrayList<>();
-        }
+        resultPoints = new ArrayList<>();
+        this.numberOfIntersections = 0;
 
-        List<Point> output = new ArrayList<>(pointsToClip);
+        System.out.println("Clipper: Starting Weiler-Atherton with clipper=" + clipperPoints.size() +
+                ", toClip=" + pointsToClip.size());
 
-        // Prejdeme každou hranou ořezávacího polygonu
-        for (int i = 0; i < clipperPoints.size(); i++) {
-            if (output.isEmpty()) {
+        List<Point> a = clipOne(pointsToClip, clipperPoints);
+        List<Point> b = clipOne(clipperPoints, pointsToClip);
+
+        System.out.println("After clipOne: a=" + a.size() + ", b=" + b.size());
+
+        int i = 0, j = 0;
+        while(true) {
+            if(i >= a.size()){
+                for (int n = j; n < b.size(); n++){
+                    resultPoints.add(b.get(n));
+                }
                 break;
             }
 
-            Point edgeStart = clipperPoints.get(i);
-            Point edgeEnd = clipperPoints.get((i + 1) % clipperPoints.size());
-
-            List<Point> input = output;
-            output = new ArrayList<>();
-
-            // Spočítame tečný vektor hrany (dx, dy)
-            double dx = edgeEnd.getX() - edgeStart.getX();
-            double dy = edgeEnd.getY() - edgeStart.getY();
-
-            // normala – rotacia 90° doleva
-            double nx = -dy;
-            double ny = dx;
-            // normalizacia
-            double len = Math.sqrt(nx * nx + ny * ny);
-            if (len == 0) {
-                continue;
-            }
-            nx /= len;
-            ny /= len;
-
-            // orezavanie
-            for (int j = 0; j < input.size(); j++) {
-                Point current = input.get(j);
-                Point next = input.get((j + 1) % input.size());
-
-                // Vektor od zaciatku hrany k aktualnemu bodu
-                double vx1 = current.getX() - edgeStart.getX();
-                double vy1 = current.getY() - edgeStart.getY();
-
-                // Vektor od zaciatku hrany k dalsiemu bodu
-                double vx2 = next.getX() - edgeStart.getX();
-                double vy2 = next.getY() - edgeStart.getY();
-
-                // Skalární součin s normálou
-                double dot1 = vx1 * nx + vy1 * ny;
-                double dot2 = vx2 * nx + vy2 * ny;
-
-                boolean currentInside = dot1 >= 0; // kladné = in
-                boolean nextInside = dot2 >= 0;
-
-                if (currentInside && nextInside) {
-                    // Oba body uvnitř – přidáme next
-                    output.add(next);
-                } else if (currentInside && !nextInside) {
-                    // current uvnitř, next venku – pridame priesecnik
-                    Point intersection = getIntersection(
-                            current, next,
-                            edgeStart, edgeEnd
-                    );
-                    if (intersection != null) {
-                        output.add(intersection);
-                    }
-                } else if (!currentInside && nextInside) {
-                    // current venku, next uvnitř – přidáme preisecnika next
-                    Point intersection = getIntersection(
-                            current, next,
-                            edgeStart, edgeEnd
-                    );
-                    if (intersection != null) {
-                        output.add(intersection);
-                    }
-                    output.add(next);
+            if(j >= b.size()){
+                for (int n = i; n < a.size(); n++){
+                    resultPoints.add(a.get(n));
                 }
-                // ak su oba body vonku, nic nepridavame
+                break;
+            }
+
+            if(a.get(i).getX() == b.get(j).getX() && a.get(i).getY() == b.get(j).getY()){
+                resultPoints.add(a.get(i));
+                i++;
+                j++;
+            }
+            else{
+                List<Point> temp = mergePoints(a, b, i, j);
+                if(temp != null){
+                    for (int n = 1; n < temp.size(); n++){
+                        resultPoints.add(temp.get(n));
+                    }
+                    if(temp.get(0).getX() == 0){
+                        i+= temp.size();
+                        j++;
+                    }
+                    else{
+                        j+= temp.size();
+                        i++;
+                    }
+                }
             }
         }
 
-        return output;
+        System.out.println("Clipper: Final result has " + resultPoints.size() + " points");
+        return resultPoints;
     }
 
-    private Point getIntersection(Point p1, Point p2, Point q1, Point q2) {
-        double x1 = p1.getX(), y1 = p1.getY();
-        double x2 = p2.getX(), y2 = p2.getY();
-        double x3 = q1.getX(), y3 = q1.getY();
-        double x4 = q2.getX(), y4 = q2.getY();
+    private boolean isInside(List<Point> clipperPoints, Point p) {
+        int windingNumber = 0;
 
-        double denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+        for (int i = 0; i < clipperPoints.size(); i++) {
+            Point start = clipperPoints.get(i);
+            Point end = clipperPoints.get((i + 1) % clipperPoints.size());
 
-        if (Math.abs(denom) < 1e-10) {
-            return null; // Rovnoběžné nebo totožné úsečky
+            if (start.getY() <= p.getY()) {
+                if (end.getY() > p.getY()) {
+                    if (isLeftOfEdge(start, end, p) > 0) {
+                        windingNumber++;
+                    }
+                }
+            } else {
+                if (end.getY() <= p.getY()) {
+                    if (isLeftOfEdge(start, end, p) < 0) {
+                        windingNumber--;
+                    }
+                }
+            }
         }
 
-        double t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+        return windingNumber != 0;
+    }
 
-        int ix = (int) Math.round(x1 + t * (x2 - x1));
-        int iy = (int) Math.round(y1 + t * (y2 - y1));
+    private double isLeftOfEdge(Point start, Point end, Point p) {
+        return (end.getX() - start.getX()) * (p.getY() - start.getY()) -
+                (p.getX() - start.getX()) * (end.getY() - start.getY());
+    }
 
-        return new Point(ix, iy);
-        // TODO: dodělat ořezání - slide 21
+    private Point calculateIntersection(List<Point> clipperPoints, Point p1, Point p2) {
+        for (int i = 0; i < clipperPoints.size(); i++) {
+            Point cP1 = clipperPoints.get(i);
+            Point cP2 = clipperPoints.get((i + 1) % clipperPoints.size());
 
-        // Poznámky:
-        // - spočítat tečný vektor - slide 28
-        // - spočítat normálu - slide 28
-        // - spočítat, vektor k bodu, který testujeme - slide 28
-        // - skalární součin (dot product) - prezentace lineaární algebra
-        // - podle znaménka určit, kde je bod
-        // - výsledkem skalárního součinu je úhel, podle znamenka určím, jestli je vlevo nebo vpravo
-        // - pokud vyjde kladné, point je na stejné straně jako normála
+            double x1 = cP1.getX(), y1 = cP1.getY();
+            double x2 = cP2.getX(), y2 = cP2.getY();
+            double x3 = p1.getX(), y3 = p1.getY();
+            double x4 = p2.getX(), y4 = p2.getY();
+
+            double numeratorX = (x1 * y2 - y1 * x2) * (x3 - x4) - (x3 * y4 - y3 * x4) * (x1 - x2);
+            double numeratorY = (x1 * y2 - y1 * x2) * (y3 - y4) - (x3 * y4 - y3 * x4) * (y1 - y2);
+            double denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+
+            if (Math.abs(denominator) < 1e-10) {
+                continue;
+            }
+
+            double x0 = numeratorX / denominator;
+            double y0 = numeratorY / denominator;
+
+            if (isBetween(x1, x2, x0) && isBetween(y1, y2, y0) &&
+                    isBetween(x3, x4, x0) && isBetween(y3, y4, y0)) {
+                this.numberOfIntersections++;
+                return new Point((int) Math.round(x0), (int) Math.round(y0));
+            }
+        }
+        return null;
+    }
+
+    private boolean isBetween(double a, double b, double c) {
+        return Math.min(a, b) <= c && c <= Math.max(a, b);
+    }
+
+    private List<Point> mergePoints(List<Point> a, List<Point> b, int i, int j) {
+        boolean checkA = false, checkB = false;
+        List<Point> pointsA = new ArrayList<>();
+        pointsA.add(new Point(0, 0));
+
+        List<Point> pointsB = new ArrayList<>();
+        pointsB.add(new Point(1, 0));
+
+        pointsA.add(a.get(i));
+        pointsB.add(b.get(j));
+
+        MAIN: for (int n = i; n < a.size()-1; n++) {
+            for (Point p : b) {
+                if(a.get(n+1).getX() == p.getX() && a.get(n+1).getY() == p.getY()) {
+                    checkA = true;
+                    pointsA.add(new Point(a.get(n+1).getX(), a.get(n+1).getY()));
+                    break MAIN;
+                }
+            }
+            pointsA.add(new Point(a.get(n+1).getX(), a.get(n+1).getY()));
+        }
+
+        MAIN: for (int n = j; n < b.size()-1; n++) {
+            for (Point p : a) {
+                if(b.get(n+1).getX() == p.getX() && b.get(n+1).getY() == p.getY()) {
+                    checkB = true;
+                    pointsB.add(new Point(b.get(n+1).getX(), b.get(n+1).getY()));
+                    break MAIN;
+                }
+            }
+            pointsB.add(new Point(b.get(n+1).getX(), b.get(n+1).getY()));
+        }
+
+        if(pointsA.size() < pointsB.size() && checkA){
+            return pointsA;
+        }
+        else if (checkB){
+            return pointsB;
+        }
+        return null;
+    }
+
+    private List<Point> clipOne(List<Point> a, List<Point> b) {
+        System.out.println("clipOne: processing " + a.size() + " points against " + b.size() + " edges");
+        List<Point> result = new ArrayList<>();
+
+        for (int i = 0; i < a.size(); i++) {
+            Point currentPoint = a.get(i);
+            Point nextPoint = a.get((i + 1) % a.size());
+
+            boolean currentInside = isInside(b, currentPoint);
+            boolean nextInside = isInside(b, nextPoint);
+
+            if (currentInside) {
+                result.add(currentPoint);
+            }
+
+            if (currentInside != nextInside) {
+                Point intersection = calculateIntersection(b, currentPoint, nextPoint);
+                if (intersection != null) {
+                    result.add(intersection);
+                }
+            }
+        }
+
+        System.out.println("clipOne: returning " + result.size() + " points");
+        return result;
     }
 }
